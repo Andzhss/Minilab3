@@ -4,59 +4,36 @@
 
 """
 [[
-	Surface:	MiniLab3
-	Developer:	Farès MEZDOUR
-	Version:	1.0.8
-
-    Copyright (c) 2022 Farès MEZDOUR
+    Surface:    MiniLab3
+    Developer:  Farès MEZDOUR
+    Version:    1.0.8 (Modified)
 ]]
 """
 
-
-import time
-import midi
 import ui
-import sys
-import mixer
 import transport
 import channels
-import playlist
 import patterns
 import plugins
 import device
-
-
-
 
 from MiniLab3Process import MiniLabMidiProcessor
 from MiniLab3Return import MiniLabLightReturn
 from MiniLab3Display import MiniLabDisplay
 from MiniLab3Pages import MiniLabPagedDisplay
 from MiniLab3Connexion import MiniLabConnexion
-from MiniLab3Dispatch import send_to_device
 import ArturiaVCOL
 
 ## CONSTANT
-
-TEMP = 0.5
-COLOUR = [0x10,0x11,0x04,0x05,0x14,0x7F,0x01]
 PORT_MIDICC_ANALOGLAB = 10
 
-#-----------------------------------------------------------------------------------------
-
-# This is the master class. It will run the init lights pattern 
-# and call the others class to process MIDI events
-
-
 class MidiControllerConfig :
-
     def __init__(self):
         self._lightReturn = MiniLabLightReturn()
         self._display = MiniLabDisplay()
         self._paged_display = MiniLabPagedDisplay(self._display)
         self._connexion = MiniLabConnexion()
         self._disp = 0
-        
 
     def LightReturn(self) :
         return self._lightReturn
@@ -75,14 +52,16 @@ class MidiControllerConfig :
         
     def Sync(self):
         # Update display
-
         active_index = channels.selectedChannel()
         channel_name = channels.getChannelName(active_index)
+        
+        # Handle special characters in names
         for i in range(len(channel_name)) :
             if (ord(channel_name[i]) not in range(0,127)) :
                 str1 = channel_name[0:i]
                 str2 = channel_name[i+1::]
                 channel_name = str1 + '?' + str2
+                
         pattern_number = patterns.patternNumber()
         pattern_name = patterns.getPatternName(pattern_number)    
 
@@ -94,7 +73,6 @@ class MidiControllerConfig :
                 line2='%s' % pattern_name 
                 )
             self.paged_display().SetActivePage('main', 1500)
-        
         else :
             self._paged_display.SetPageLines(
                 'main',
@@ -105,62 +83,38 @@ class MidiControllerConfig :
             self.paged_display().SetActivePage('main', 1500)
 
 
-#----------------------------------------------------------------------------------------
-
-# Function called for each event 
-
-
 def OnMidiMsg(event) :
-    # print(event)
+    # Pass event to the processor
+    # Logic: If processor returns True, it means "I handled it internally" 
+    # or "I want to influence handled state".
+    # See MiniLab3Process.py for specific return values (False is used to force handled=True)
     if _processor.ProcessEvent(event):
         event.handled = False
 
-
-# Function called when FL Studio is starting
-
 def OnInit():
-    print('Loaded MIDI script for Arturia MiniLab 3')
+    print('Loaded MIDI script for Arturia MiniLab 3 (Custom)')
     init()
     _mk3.LightReturn().init()
     _mk3.Sync()
     _mk3.paged_display().SetPageLines('welcome', 10, line1=ui.getProgTitle(), line2="Connected")
     _mk3.paged_display().SetActivePage('welcome', expires=1500)
     _mk3.paged_display().SetActivePage('main')
-    print("### Messages successfully sent to MINILAB3 ###")
 
-
-        
 def init() :
-    
-    # Connxexion
     global _mk3 
     _mk3 = MidiControllerConfig()
     global _processor
     _processor = MiniLabMidiProcessor(_mk3) 
     _mk3.connexion().DAWConnexion()
-    print("### Successfully created class objects ###")
     
-    
-# Handles the script when FL Studio closes
-
 def OnDeInit():
-    # Deconnxexion
-    # _mk3.paged_display().SetPageLines('goodbye1', 12, line1=ui.getProgTitle(), line2="Disconnected")
-    # _mk3.paged_display().SetActivePage('goodbye1', 1500)
     _mk3.connexion().DAWDisconnection()
-    #_mk3.connexion().ArturiaDisconnection()
     return
    
-  
-# Function called when Play/Pause button is ON
-
 def OnUpdateBeatIndicator(value):
     _mk3.LightReturn().ProcessPlayBlink(value)
     _mk3.LightReturn().ProcessRecordBlink(value)
  
-
-# Function called at refresh, flag value changes depending on the refresh type 
-
 def OnRefresh(flags) :
     _mk3.LightReturn().RecordReturn()
     _mk3.LightReturn().PlayReturn()
@@ -170,41 +124,17 @@ def OnRefresh(flags) :
     if plugins.isValid(channels.selectedChannel()) :
         string = plugins.getPluginName(channels.selectedChannel())
         if string in ArturiaVCOL.V_COL :
-        #     _mk3.connexion().ArturiaConnexion()
-        # else : 
             if not ui.getFocused(5) :
                 _mk3.connexion().ArturiaDisconnection()
             else :
                 _mk3.connexion().ArturiaConnexion()
-        # else :
-        #     if not ui.getFocused(5) :
-        #         _mk3.connexion().ArturiaDisconnection()
         else :
             _mk3.connexion().ArturiaDisconnection()
     else :
         _mk3.connexion().ArturiaDisconnection()
-    
 
-    #print("flags : ", flags)
     if flags not in [4,256,260,4608,4096] :
         _mk3.Sync()
-    
-
-
-# Function called time to time mainly to update the beat indicator
 
 def OnIdle():
     _mk3.Idle()
-    
-    
-    
-# def OnPitchBend(event) :
-
-#     if channels.selectedChannel(1) != -1 :
-#         if plugins.isValid(channels.selectedChannel()) : 
-#             if plugins.getPluginName(channels.selectedChannel()) in ArturiaVCOL.V_COL :
-#                 #channels.setChannelPitch(channels.selectedChannel(),(event.data2-64)*(200/64),1) # SMALL RANGE
-#                 #channels.setChannelPitch(channels.selectedChannel(),round(18.75 * event.data2 - 1200),1) #FULL RANGE
-#                 device.forwardMIDICC(event.status + (event.data1 << 8) + (event.data2 << 16) + (PORT_MIDICC_ANALOGLAB << 24))
-#             else :
-#                 event.handled = False
