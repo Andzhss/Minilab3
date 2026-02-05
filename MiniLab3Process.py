@@ -102,7 +102,14 @@ PAD_MATRIX_STATE = [
         0, 0, 0, 0
 ]
 
-                    
+# Mapping Pads (Note Numbers) to FL Studio Channels (0-15)
+# This maps Pad 1 (Note 36) to Channel 1, Pad 2 to Channel 2, etc.
+CHANNEL_RACK_MAP = {
+    36: 0, 37: 1, 38: 2, 39: 3, 
+    40: 4, 41: 5, 42: 6, 43: 7,
+    44: 8, 45: 9, 46: 10, 47: 11, 
+    48: 12, 49: 13, 50: 14, 51: 15
+}                    
 
 # FPC MAP
 FPC_MAP = {
@@ -239,24 +246,60 @@ class MiniLabMidiProcessor:
         self._midi_command_dispatcher.Dispatch(event)
 
     def OnWheelEvent(self, event):
-        if channels.selectedChannel(1) != -1 :
-            if plugins.isValid(channels.selectedChannel()) : 
-                if plugins.getPluginName(channels.selectedChannel()) in ArturiaVCOL.V_COL :
-                    device.forwardMIDICC(event.status + (event.data1 << 8) + (event.data2 << 16) + (PORT_MIDICC_ANALOGLAB << 24))
-        # self._wheel_dispatcher.Dispatch(event)
+        # Logic to check if we are controlling an Arturia V-Collection plugin
+        is_arturia = False
+        if channels.selectedChannel(1) != -1:
+             if plugins.isValid(channels.selectedChannel()): 
+                 if plugins.getPluginName(channels.selectedChannel()) in ArturiaVCOL.V_COL:
+                     is_arturia = True
+
+        if is_arturia:
+            # Forward data specifically for Arturia integration
+            device.forwardMIDICC(event.status + (event.data1 << 8) + (event.data2 << 16) + (PORT_MIDICC_ANALOGLAB << 24))
+            event.handled = True
+        else:
+            # For all other plugins, let FL Studio handle Pitch and Mod normally
+            event.handled = False
+            
+        # Return False to ensure our handled state sticks
+        return False
 
     def OnKnobEvent(self, event):
         self._knob_dispatcher.Dispatch(event)
 
-    def OnDrumEvent(self, event) :
-        index = event.data1 
-        if event.status == 153 :
-            self.PadOn(index)
-            event.data1 = FPC_MAP.get(str(event.data1))
-        elif event.status == 137 : 
-            self.PadOff(index)
-            event.data1 = FPC_MAP.get(str(event.data1))
-        event.handled = False
+    def OnDrumEvent(self, event):
+        # Get the MIDI note number from the pad
+        note = event.data1
+        
+        # Check if this note corresponds to one of our mapped pads
+        if note in CHANNEL_RACK_MAP:
+            target_channel = [note]
+            
+            # Check if the target channel actually exists in your rack
+            if target_channel < channels.channelCount():
+                
+                # Visual Feedback: Update Pad Lights
+                if event.status == 153: # Note On
+                    self.PadOn(note)
+                    # Trigger Middle C (MIDI 60) on the target channel
+                    channels.midiNoteOn(target_channel, 60, event.data2)
+                    
+                elif event.status == 137: # Note Off
+                    self.PadOff(note)
+                    # Turn off the note
+                    channels.midiNoteOn(target_channel, 60, 0)
+
+            # IMPORTANT: Tell FL Studio we handled this event so it doesn't 
+            # play the default note on the selected channel.
+            event.handled = True
+            
+            # Return False here to prevent device_MiniLab3.py from resetting event.handled
+            return False
+            
+        else:
+            # Fallback for any unexpected pad notes
+            event.handled = False
+            return False
 
     # WINDOW
 
@@ -580,4 +623,5 @@ class MiniLabMidiProcessor:
     
             
     
+
 
