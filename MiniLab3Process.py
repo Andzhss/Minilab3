@@ -267,34 +267,36 @@ class MiniLabMidiProcessor:
     def OnKnobEvent(self, event):
         self._knob_dispatcher.Dispatch(event)
 
-    def OnDrumEvent(self, event):
-        # Get the MIDI note number from the pad
-        note = event.data1
+    def OnDrumEvent(self, event) :
+        note = event.data1 
         
-        # Check if this note corresponds to one of our mapped pads
+        # Check if we are using the Custom Channel Rack Map
         if note in CHANNEL_RACK_MAP:
-            target_channel = [note]
+            target_channel = CHANNEL_RACK_MAP[note]
             
-            # Check if the target channel actually exists in your rack
             if target_channel < channels.channelCount():
-                
-                # Visual Feedback: Update Pad Lights
-                if event.status == 153: # Note On
+                if event.status == 153 : # Note On
                     self.PadOn(note)
-                    # Trigger Middle C (MIDI 60) on the target channel
+                    # Play Middle C (60) on the specific channel
                     channels.midiNoteOn(target_channel, 60, event.data2)
-                    
-                elif event.status == 137: # Note Off
+                elif event.status == 137 : # Note Off
                     self.PadOff(note)
-                    # Turn off the note
                     channels.midiNoteOn(target_channel, 60, 0)
-
-            # IMPORTANT: Tell FL Studio we handled this event so it doesn't 
-            # play the default note on the selected channel.
-            event.handled = True
             
-            # Return False here to prevent device_MiniLab3.py from resetting event.handled
+            # Tell FL Studio we handled it, so it doesn't play the selected channel too
+            event.handled = True
             return False
+
+        # Default behavior (if note is not in our map)
+        index = event.data1 
+        if event.status == 153 :
+            self.PadOn(index)
+            event.data1 = FPC_MAP.get(str(event.data1))
+        elif event.status == 137 : 
+            self.PadOff(index)
+            event.data1 = FPC_MAP.get(str(event.data1))
+        event.handled = False
+        return True
             
         else:
             # Fallback for any unexpected pad notes
@@ -623,5 +625,6 @@ class MiniLabMidiProcessor:
     
             
     
+
 
 
